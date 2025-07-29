@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adinkra Quest</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #ff6b35, #f7931e, #ffd23f);
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        
+        #gameContainer {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            max-width: 95vw;
+            max-height: 95vh;
+            background: linear-gradient(to bottom, #87ceeb 0%, #98fb98 50%, #daa520 100%);
+            border: 4px solid #8b4513;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to bottom, #87ceeb 0%, #98fb98 40%, #daa520 100%);
+        }
+        
+        #ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 15px;
+            background: rgba(139, 69, 19, 0.9);
+            color: #ffd700;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+            font-size: 18px;
+            z-index: 10;
+        }
+        
+        #startScreen, #gameOverScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 20;
+            text-align: center;
+        }
+        
+        #gameOverScreen {
+            display: none;
+        }
+        
+        .title {
+            font-size: 48px;
+            font-weight: bold;
+            color: #ffd700;
+            text-shadow: 3px 3px 6px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+        }
+        
+        .subtitle {
+            font-size: 20px;
+            margin-bottom: 30px;
+            color: #ff6b35;
+        }
+        
+        .btn {
+            padding: 15px 30px;
+            font-size: 20px;
+            font-weight: bold;
+            border: none;
+            border-radius: 25px;
+            background: linear-gradient(45deg, #ff6b35, #f7931e);
+            color: white;
+            cursor: pointer;
+            margin: 10px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+        }
+        
+        .controls {
+            margin-top: 20px;
+            font-size: 16px;
+            color: #ccc;
+        }
+        
+        #instructions {
+            max-width: 600px;
+            line-height: 1.6;
+            margin: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        
+        <div id="ui">
+            <div>Score: <span id="score">0</span></div>
+            <div>Symbols: <span id="symbols">0</span></div>
+            <div>Lives: <span id="lives">3</span></div>
+        </div>
+        
+        <div id="startScreen">
+            <div class="title">🏃‍♂️ Adinkra Quest 🎯</div>
+            <div class="subtitle">A Journey Through Ghanaian Heritage</div>
+            <div id="instructions">
+                <p>🌟 Welcome to the vibrant world of Ghana! 🌟</p>
+                <p>Run through beautiful landscapes collecting sacred Adinkra symbols while avoiding obstacles.</p>
+                <p>Each symbol tells a story of wisdom, courage, and African heritage.</p>
+            </div>
+            <button class="btn" onclick="startGame()">Begin Your Quest</button>
+            <div class="controls">
+                <p>🎮 Controls: SPACE to jump, ← → arrow keys to move</p>
+                <p>📱 Mobile: Tap to jump, swipe left/right to move</p>
+            </div>
+        </div>
+        
+        <div id="gameOverScreen">
+            <div class="title">Quest Complete!</div>
+            <div class="subtitle">Your journey through Ghana has ended</div>
+            <div>Final Score: <span id="finalScore">0</span></div>
+            <div>Symbols Collected: <span id="finalSymbols">0</span></div>
+            <button class="btn" onclick="restartGame()">New Quest</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        
+        // Game state
+        let gameRunning = false;
+        let score = 0;
+        let symbols = 0;
+        let lives = 3;
+        let gameSpeed = 2;
+        let lastObstacleTime = 0;
+        let lastSymbolTime = 0;
+        
+        // Player object
+        const player = {
+            x: 100,
+            y: 400,
+            width: 40,
+            height: 40,
+            velocityY: 0,
+            jumping: false,
+            grounded: false,
+            color: '#8b4513'
+        };
+        
+        // Ground level
+        const groundY = 500;
+        player.y = groundY - player.height;
+        
+        // Game objects arrays
+        let obstacles = [];
+        let adinkraSymbols = [];
+        let backgroundElements = [];
+        
+        // Adinkra symbols (Unicode and meanings)
+        const adinkraTypes = [
+            { symbol: '⚡', name: 'Adwo', meaning: 'Peace and Tranquility' },
+            { symbol: '🌟', name: 'Gye Nyame', meaning: 'Except for God' },
+            { symbol: '🎯', name: 'Sankofa', meaning: 'Go back and get it' },
+            { symbol: '💎', name: 'Duafe', meaning: 'Wooden Comb' },
+            { symbol: '🔥', name: 'Akoben', meaning: 'War Horn' },
+            { symbol: '🌺', name: 'Adinkrahene', meaning: 'Chief of Adinkra' }
+        ];
+        
+        // Initialize background elements
+        function initBackground() {
+            backgroundElements = [];
+            for (let i = 0; i < 10; i++) {
+                backgroundElements.push({
+                    x: Math.random() * canvas.width * 2,
+                    y: Math.random() * 200 + 50,
+                    type: Math.random() > 0.5 ? 'tree' : 'mountain',
+                    speed: Math.random() * 0.5 + 0.2
+                });
+            }
+        }
+        
+        // Input handling
+        let keys = {};
+        
+        document.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            if (e.code === 'Space') {
+                e.preventDefault();
+                jump();
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            keys[e.code] = false;
+        });
+        
+        // Touch controls for mobile
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            const x = touch.clientX - rect.left;
+            
+            if (x < canvas.width / 3) {
+                // Left third - move left
+                keys['ArrowLeft'] = true;
+            } else if (x > (canvas.width * 2) / 3) {
+                // Right third - move right
+                keys['ArrowRight'] = true;
+            } else {
+                // Middle third - jump
+                jump();
+            }
+        });
+        
+        canvas.addEventListener('touchend', (e) => {
+            keys['ArrowLeft'] = false;
+            keys['ArrowRight'] = false;
+        });
+        
+        function jump() {
+            if (player.grounded) {
+                player.velocityY = -12;
+                player.jumping = true;
+                player.grounded = false;
+            }
+        }
+        
+        function updatePlayer() {
+            // Horizontal movement
+            if (keys['ArrowLeft'] && player.x > 0) {
+                player.x -= 5;
+            }
+            if (keys['ArrowRight'] && player.x < canvas.width - player.width) {
+                player.x += 5;
+            }
+            
+            // Gravity and jumping
+            player.velocityY += 0.8; // gravity
+            player.y += player.velocityY;
+            
+            // Ground collision
+            if (player.y >= groundY - player.height) {
+                player.y = groundY - player.height;
+                player.velocityY = 0;
+                player.jumping = false;
+                player.grounded = true;
+            }
+        }
+        
+        function spawnObstacle(currentTime) {
+            if (currentTime - lastObstacleTime > 2000 + Math.random() * 2000) {
+                obstacles.push({
+                    x: canvas.width,
+                    y: groundY - 30,
+                    width: 30,
+                    height: 30,
+                    type: 'rock'
+                });
+                lastObstacleTime = currentTime;
+            }
+        }
+        
+        function spawnSymbol(currentTime) {
+            if (currentTime - lastSymbolTime > 1500 + Math.random() * 1500) {
+                const symbolType = adinkraTypes[Math.floor(Math.random() * adinkraTypes.length)];
+                adinkraSymbols.push({
+                    x: canvas.width,
+                    y: Math.random() * 200 + 100,
+                    width: 25,
+                    height: 25,
+                    symbol: symbolType.symbol,
+                    name: symbolType.name,
+                    meaning: symbolType.meaning,
+                    collected: false
+                });
+                lastSymbolTime = currentTime;
+            }
+        }
+        
+        function updateObstacles() {
+            obstacles = obstacles.filter(obstacle => {
+                obstacle.x -= gameSpeed;
+                return obstacle.x > -obstacle.width;
+            });
+        }
+        
+        function updateSymbols() {
+            adinkraSymbols = adinkraSymbols.filter(symbol => {
+                symbol.x -= gameSpeed;
+                return symbol.x > -symbol.width;
+            });
+        }
+        
+        function checkCollisions() {
+            // Obstacle collisions
+            obstacles.forEach(obstacle => {
+                if (player.x < obstacle.x + obstacle.width &&
+                    player.x + player.width > obstacle.x &&
+                    player.y < obstacle.y + obstacle.height &&
+                    player.y + player.height > obstacle.y) {
+                    lives--;
+                    obstacle.x = -100; // Remove obstacle
+                    if (lives <= 0) {
+                        gameOver();
+                    }
+                }
+            });
+            
+            // Symbol collections
+            adinkraSymbols.forEach(symbol => {
+                if (!symbol.collected &&
+                    player.x < symbol.x + symbol.width &&
+                    player.x + player.width > symbol.x &&
+                    player.y < symbol.y + symbol.height &&
+                    player.y + player.height > symbol.y) {
+                    symbol.collected = true;
+                    symbols++;
+                    score += 100;
+                    symbol.x = -100; // Remove symbol
+                }
+            });
+        }
+        
+        function drawBackground() {
+            // Sky gradient
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, '#87ceeb');
+            gradient.addColorStop(0.4, '#98fb98');
+            gradient.addColorStop(1, '#daa520');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Background elements
+            backgroundElements.forEach(element => {
+                element.x -= element.speed;
+                if (element.x < -50) {
+                    element.x = canvas.width + 50;
+                }
+                
+                ctx.fillStyle = element.type === 'tree' ? '#228b22' : '#8b7355';
+                if (element.type === 'tree') {
+                    // Draw tree
+                    ctx.fillRect(element.x, element.y + 20, 8, 30);
+                    ctx.beginPath();
+                    ctx.arc(element.x + 4, element.y + 15, 15, 0, Math.PI * 2);
+                    ctx.fill();
+                } else {
+                    // Draw mountain
+                    ctx.beginPath();
+                    ctx.moveTo(element.x, element.y + 40);
+                    ctx.lineTo(element.x + 20, element.y);
+                    ctx.lineTo(element.x + 40, element.y + 40);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            });
+            
+            // Ground with Kente pattern inspiration
+            ctx.fillStyle = '#8b4513';
+            ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+            
+            // Kente-inspired pattern on ground
+            for (let i = 0; i < canvas.width; i += 20) {
+                ctx.fillStyle = i % 40 === 0 ? '#ff6b35' : '#f7931e';
+                ctx.fillRect(i, groundY, 20, 10);
+            }
+        }
+        
+        function drawPlayer() {
+            // Player body (simplified Ghanaian-inspired character)
+            ctx.fillStyle = '#8b4513';
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+            
+            // Kente-pattern shirt
+            ctx.fillStyle = '#ff6b35';
+            ctx.fillRect(player.x + 5, player.y + 10, player.width - 10, 15);
+            ctx.fillStyle = '#ffd700';
+            ctx.fillRect(player.x + 8, player.y + 12, player.width - 16, 3);
+            
+            // Simple face
+            ctx.fillStyle = '#654321';
+            ctx.fillRect(player.x + 10, player.y + 5, 20, 15);
+            
+            // Eyes
+            ctx.fillStyle = 'white';
+            ctx.fillRect(player.x + 13, player.y + 8, 4, 3);
+            ctx.fillRect(player.x + 23, player.y + 8, 4, 3);
+            
+            // Running animation effect
+            if (Math.floor(Date.now() / 200) % 2) {
+                ctx.fillStyle = '#8b4513';
+                ctx.fillRect(player.x + 5, player.y + player.height, 8, 5);
+                ctx.fillRect(player.x + player.width - 13, player.y + player.height - 3, 8, 8);
+            } else {
+                ctx.fillStyle = '#8b4513';
+                ctx.fillRect(player.x + player.width - 13, player.y + player.height, 8, 5);
+                ctx.fillRect(player.x + 5, player.y + player.height - 3, 8, 8);
+            }
+        }
+        
+        function drawObstacles() {
+            obstacles.forEach(obstacle => {
+                ctx.fillStyle = '#696969';
+                ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+                
+                // Add some detail to make it look like a rock
+                ctx.fillStyle = '#808080';
+                ctx.fillRect(obstacle.x + 5, obstacle.y + 5, 10, 10);
+                ctx.fillRect(obstacle.x + 15, obstacle.y + 10, 8, 8);
+            });
+        }
+        
+        function drawSymbols() {
+            adinkraSymbols.forEach(symbol => {
+                if (!symbol.collected) {
+                    // Golden glow effect
+                    ctx.shadowColor = '#ffd700';
+                    ctx.shadowBlur = 10;
+                    
+                    ctx.font = '24px Arial';
+                    ctx.fillStyle = '#ffd700';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(symbol.symbol, symbol.x + symbol.width/2, symbol.y + symbol.height);
+                    
+                    // Reset shadow
+                    ctx.shadowBlur = 0;
+                }
+            });
+        }
+        
+        function updateScore() {
+            score += 1;
+            if (score % 1000 === 0) {
+                gameSpeed += 0.5;
+            }
+        }
+        
+        function updateUI() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('symbols').textContent = symbols;
+            document.getElementById('lives').textContent = lives;
+        }
+        
+        function gameLoop(currentTime) {
+            if (!gameRunning) return;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Update game objects
+            updatePlayer();
+            spawnObstacle(currentTime);
+            spawnSymbol(currentTime);
+            updateObstacles();
+            updateSymbols();
+            checkCollisions();
+            updateScore();
+            
+            // Draw everything
+            drawBackground();
+            drawPlayer();
+            drawObstacles();
+            drawSymbols();
+            
+            // Update UI
+            updateUI();
+            
+            requestAnimationFrame(gameLoop);
+        }
+        
+        function startGame() {
+            gameRunning = true;
+            score = 0;
+            symbols = 0;
+            lives = 3;
+            gameSpeed = 2;
+            obstacles = [];
+            adinkraSymbols = [];
+            
+            player.x = 100;
+            player.y = groundY - player.height;
+            player.velocityY = 0;
+            player.grounded = true;
+            
+            initBackground();
+            
+            startScreen.style.display = 'none';
+            gameOverScreen.style.display = 'none';
+            
+            requestAnimationFrame(gameLoop);
+        }
+        
+        function gameOver() {
+            gameRunning = false;
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('finalSymbols').textContent = symbols;
+            gameOverScreen.style.display = 'flex';
+        }
+        
+        function restartGame() {
+            startGame();
+        }
+        
+        // Initialize the game
+        initBackground();
+    </script>
+</body>
+</html>
